@@ -9,6 +9,24 @@ or someone else is accessing your system.
 
 ![Screenshot](screenshot.png)
 
+## Build / Installation
+
+There is currently no artifact provided,
+so you would have to build it from source code.
+
+You would need development libraries for GTK3 and libappindicator to build.
+On Ubuntu, you can install them via
+```bash
+sudo apt install libgtk-3-dev libappindicator3-dev
+```
+
+With [Rust](https://www.rust-lang.org/) installed,
+you can use
+```bash
+cargo install --git https://github.com/upsuper/gnome-who.git
+```
+to install.
+
 ## License
 
 Copyright (C) 2020 Xidorn Quan
