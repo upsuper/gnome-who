@@ -1,0 +1,33 @@
+on: [push, pull_request]
+
+name: Continuous integration
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rustfmt version
+        run: rustfmt --version
+      - uses: actions/checkout@v2
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rust versions
+        run: |-
+          rustc --version
+          cargo-clippy --version
+      - name: Install build dependencies
+        run: |-
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends libgtk-3-dev libappindicator3-dev
+      - uses: actions/checkout@v2
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
