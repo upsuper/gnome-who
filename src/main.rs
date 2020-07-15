@@ -107,21 +107,21 @@ fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
                 write!(&mut label, " @ {}", host).unwrap();
             }
             if line == &*DISPLAY {
-                let item = CheckMenuItem::new_with_label(&label);
+                let item = CheckMenuItem::with_label(&label);
                 let is_current = line == &*DISPLAY;
                 item.set_active(is_current);
                 item.set_sensitive(!is_current);
                 item.set_draw_as_radio(true);
                 menu.append(&item);
             } else {
-                let item = MenuItem::new_with_label(&label);
+                let item = MenuItem::with_label(&label);
                 menu.append(&item);
             }
             count += 1;
         }
     }
     menu.append(&SeparatorMenuItem::new());
-    let quit_item = MenuItem::new_with_label("Quit");
+    let quit_item = MenuItem::with_label("Quit");
     quit_item.connect_activate(|_| gtk::main_quit());
     menu.append(&quit_item);
 
