@@ -95,6 +95,7 @@ fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
     let mut count = 0;
     for entry in utmp_entries {
         if let UtmpEntry::UserProcess {
+            pid,
             user,
             line,
             host,
@@ -102,6 +103,7 @@ fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
             ..
         } = entry
         {
+            let time = time.with_timezone(&chrono::Local);
             let mut label = format!("{} - {} / {}", time.format("%Y-%m-%d %H:%M:%S"), user, line);
             if !host.is_empty() {
                 write!(&mut label, " @ {}", host).unwrap();

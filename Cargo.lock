@@ -475,6 +475,7 @@ name = "gnome-who"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "glib",
  "gtk",
  "inotify",
