@@ -8,6 +8,7 @@ use inotify::{Inotify, WatchMask};
 use libappindicator::{AppIndicator, AppIndicatorStatus};
 use nix::errno::Errno;
 use nix::sys::signal;
+use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use once_cell::sync::Lazy;
 use std::env;
@@ -106,11 +107,13 @@ fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
             ..
         } = entry
         {
-            match signal::kill(Pid::from_raw(*pid), None) {
+            let pid = Pid::from_raw(*pid);
+            let can_kill = match signal::kill(pid, None) {
                 // Skip processes no longer exist.
                 Err(nix::Error::Sys(Errno::ESRCH)) => continue,
-                _ => {}
-            }
+                Err(nix::Error::Sys(Errno::EPERM)) => false,
+                _ => true,
+            };
             let time = time.with_timezone(&chrono::Local);
             let mut label = format!("{} - {} / {}", time.format("%Y-%m-%d %H:%M:%S"), user, line);
             if !host.is_empty() {
@@ -125,6 +128,10 @@ fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
                 menu.append(&item);
             } else {
                 let item = MenuItem::with_label(&label);
+                item.set_sensitive(can_kill);
+                item.connect_activate(move |_| {
+                    let _ = signal::kill(pid, Signal::SIGKILL);
+                });
                 menu.append(&item);
             }
             count += 1;
