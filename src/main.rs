@@ -6,6 +6,9 @@ use gtk::{
 };
 use inotify::{Inotify, WatchMask};
 use libappindicator::{AppIndicator, AppIndicatorStatus};
+use nix::errno::Errno;
+use nix::sys::signal;
+use nix::unistd::Pid;
 use once_cell::sync::Lazy;
 use std::env;
 use std::fmt::Write as _;
@@ -103,6 +106,11 @@ fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
             ..
         } = entry
         {
+            match signal::kill(Pid::from_raw(*pid), None) {
+                // Skip processes no longer exist.
+                Err(nix::Error::Sys(Errno::ESRCH)) => continue,
+                _ => {}
+            }
             let time = time.with_timezone(&chrono::Local);
             let mut label = format!("{} - {} / {}", time.format("%Y-%m-%d %H:%M:%S"), user, line);
             if !host.is_empty() {
