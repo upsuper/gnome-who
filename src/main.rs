@@ -1,19 +1,24 @@
 use anyhow::{Context, Error, Result};
-use glib::{MainContext, Sender};
+use glib::MainContext;
 use gtk::{
-    ButtonsType, CheckMenuItem, CheckMenuItemExt, DialogFlags, GtkMenuItemExt, Menu, MenuItem,
-    MenuShellExt, MessageDialog, MessageType, SeparatorMenuItem, WidgetExt, Window,
+    ButtonsType, CheckMenuItem, CheckMenuItemExt, DialogExt, DialogFlags, GtkMenuItemExt, Menu,
+    MenuItem, MenuShellExt, MessageDialog, MessageType, SeparatorMenuItem, WidgetExt, Window,
 };
 use inotify::{Inotify, WatchMask};
 use libappindicator::{AppIndicator, AppIndicatorStatus};
+use mio::unix::SourceFd;
+use mio::{Events, Interest, Poll, Token};
+use mio_pidfd::PidFd;
 use nix::errno::Errno;
-use nix::sys::signal;
-use nix::sys::signal::Signal;
+use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
+use std::mem;
+use std::os::unix::io::AsRawFd;
 use std::thread;
 use tempfile::TempDir;
 use utmp_rs::UtmpEntry;
@@ -25,8 +30,15 @@ const WARNING_ICON: &[u8] = include_bytes!("../icons/warning.svg");
 static DISPLAY: Lazy<String> = Lazy::new(|| env::var("DISPLAY").expect("no DISPLAY specified"));
 
 enum Message {
-    Update(Vec<UtmpEntry>),
+    Update(Vec<Entry>),
     Error(Error),
+}
+
+struct Entry {
+    pid: Pid,
+    label: String,
+    is_current: bool,
+    can_kill: bool,
 }
 
 fn main() -> Result<()> {
@@ -34,11 +46,16 @@ fn main() -> Result<()> {
 
     let (tx, rx) = MainContext::channel(glib::PRIORITY_HIGH);
     thread::spawn(move || {
-        // Ignore if sending failed, because the receiver may have died.
-        let _ = tx.send(Message::Error(match watch_utmp(tx.clone()) {
-            Ok(_) => unreachable!(),
-            Err(e) => e,
-        }));
+        let result = watch_entries(|entries| {
+            let _ = tx.send(Message::Update(entries));
+        });
+        match result {
+            Ok(()) => unreachable!(),
+            Err(e) => {
+                // Ignore if sending failed, because the receiver may have died.
+                let _ = tx.send(Message::Error(e));
+            }
+        };
     });
 
     let temp_dir = TempDir::new().context("failed to create temp dir")?;
@@ -52,11 +69,11 @@ fn main() -> Result<()> {
 
     rx.attach(None, move |msg| match msg {
         Message::Update(entries) => {
-            update_indicator(&mut indicator, &entries);
+            update_indicator(&mut indicator, entries);
             glib::Continue(true)
         }
         Message::Error(e) => {
-            let message = format!("{}", e);
+            let message = format!("{:?}", e);
             let dialog = MessageDialog::new::<Window>(
                 None,
                 DialogFlags::MODAL,
@@ -64,6 +81,7 @@ fn main() -> Result<()> {
                 ButtonsType::Ok,
                 &message,
             );
+            dialog.connect_response(|_, _| gtk::main_quit());
             dialog.show_all();
             glib::Continue(false)
         }
@@ -73,68 +91,110 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn watch_utmp(tx: Sender<Message>) -> Result<()> {
+fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
+    let mut poll = Poll::new().context("failed to create poll")?;
+
     let mut inotify = Inotify::init().context("failed to init inotify")?;
     inotify
         .add_watch(UTMP_PATH, WatchMask::CLOSE_WRITE)
         .context("failed to watch utmp file")?;
-    notify_utmp_update(&tx)?;
-    let mut buffer = [0; 1024];
+    poll.registry().register(
+        &mut SourceFd(&inotify.as_raw_fd()),
+        Token(0),
+        Interest::READABLE,
+    )?;
+
+    let mut events = Events::with_capacity(1024);
+    let mut pid_map = HashMap::new();
     loop {
-        inotify
-            .read_events_blocking(&mut buffer)
-            .context("failed to wait for events")?;
-        notify_utmp_update(&tx)?;
+        // Generate all valid entries from utmp.
+        let entries = utmp_rs::parse_from_path(UTMP_PATH)
+            .context("failed to read utmp")?
+            .into_iter()
+            .filter_map(|entry| {
+                if let UtmpEntry::UserProcess {
+                    pid,
+                    user,
+                    line,
+                    host,
+                    time,
+                    ..
+                } = entry
+                {
+                    let pid = Pid::from_raw(pid);
+                    let can_kill = match signal::kill(pid, None) {
+                        // Skip processes no longer exist.
+                        Err(nix::Error::Sys(Errno::ESRCH)) => return None,
+                        Err(nix::Error::Sys(Errno::EPERM)) => false,
+                        _ => true,
+                    };
+                    let time = time.with_timezone(&chrono::Local);
+                    let mut label =
+                        format!("{} - {} / {}", time.format("%Y-%m-%d %H:%M:%S"), user, line);
+                    if !host.is_empty() {
+                        write!(&mut label, " @ {}", host).unwrap();
+                    }
+                    let is_current = &line == &*DISPLAY;
+                    Some(Entry {
+                        pid,
+                        label,
+                        is_current,
+                        can_kill,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let registry = poll.registry();
+        let mut old_pid_map = mem::replace(&mut pid_map, HashMap::new());
+        for Entry { pid, .. } in entries.iter() {
+            if let Some((pid, fd)) = old_pid_map.remove_entry(pid) {
+                pid_map.insert(pid, fd);
+            } else {
+                let mut fd = PidFd::open(pid.as_raw(), 0).context("failed to open pid fd")?;
+                registry
+                    .register(&mut fd, Token(pid.as_raw() as usize), Interest::READABLE)
+                    .context("failed to register pid fd")?;
+                pid_map.insert(*pid, fd);
+            }
+        }
+        for (_, mut fd) in old_pid_map.into_iter() {
+            registry
+                .deregister(&mut fd)
+                .context("failed to deregister")?;
+        }
+
+        f(entries);
+        poll.poll(&mut events, None).context("failed to poll")?;
     }
 }
 
-fn notify_utmp_update(tx: &Sender<Message>) -> Result<()> {
-    let utmp_entries = utmp_rs::parse_from_path(UTMP_PATH)?;
-    tx.send(Message::Update(utmp_entries))?;
-    Ok(())
-}
-
-fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
+fn update_indicator(indicator: &mut AppIndicator, entries: Vec<Entry>) {
     let mut menu = Menu::new();
-    let mut count = 0;
-    for entry in utmp_entries {
-        if let UtmpEntry::UserProcess {
-            pid,
-            user,
-            line,
-            host,
-            time,
-            ..
-        } = entry
-        {
-            let pid = Pid::from_raw(*pid);
-            let can_kill = match signal::kill(pid, None) {
-                // Skip processes no longer exist.
-                Err(nix::Error::Sys(Errno::ESRCH)) => continue,
-                Err(nix::Error::Sys(Errno::EPERM)) => false,
-                _ => true,
-            };
-            let time = time.with_timezone(&chrono::Local);
-            let mut label = format!("{} - {} / {}", time.format("%Y-%m-%d %H:%M:%S"), user, line);
-            if !host.is_empty() {
-                write!(&mut label, " @ {}", host).unwrap();
-            }
-            if line == &*DISPLAY {
-                let item = CheckMenuItem::with_label(&label);
-                let is_current = line == &*DISPLAY;
-                item.set_active(is_current);
-                item.set_sensitive(!is_current);
-                item.set_draw_as_radio(true);
-                menu.append(&item);
-            } else {
-                let item = MenuItem::with_label(&label);
-                item.set_sensitive(can_kill);
-                item.connect_activate(move |_| {
-                    let _ = signal::kill(pid, Signal::SIGKILL);
-                });
-                menu.append(&item);
-            }
-            count += 1;
+    let mut has_non_current = false;
+    for Entry {
+        pid,
+        label,
+        is_current,
+        can_kill,
+    } in entries.into_iter()
+    {
+        if is_current {
+            let item = CheckMenuItem::with_label(&label);
+            item.set_active(true);
+            item.set_sensitive(false);
+            item.set_draw_as_radio(true);
+            menu.append(&item);
+        } else {
+            let item = MenuItem::with_label(&label);
+            item.set_sensitive(can_kill);
+            item.connect_activate(move |_| {
+                let _ = signal::kill(pid, Signal::SIGKILL);
+            });
+            menu.append(&item);
+            has_non_current = true;
         }
     }
     menu.append(&SeparatorMenuItem::new());
@@ -145,6 +205,6 @@ fn update_indicator(indicator: &mut AppIndicator, utmp_entries: &[UtmpEntry]) {
     indicator.set_menu(&mut menu);
     menu.show_all();
 
-    let icon = if count > 1 { "warning" } else { "normal" };
+    let icon = if has_non_current { "warning" } else { "normal" };
     indicator.set_icon_full(icon, icon);
 }

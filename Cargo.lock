@@ -480,6 +480,9 @@ dependencies = [
  "gtk",
  "inotify",
  "libappindicator",
+ "libc",
+ "mio",
+ "mio-pidfd",
  "nix",
  "once_cell",
  "tempfile",
@@ -679,6 +682,14 @@ dependencies = [
  "miow",
  "ntapi",
  "winapi",
+]
+
+[[package]]
+name = "mio-pidfd"
+version = "0.2.0"
+dependencies = [
+ "libc",
+ "mio",
 ]
 
 [[package]]
