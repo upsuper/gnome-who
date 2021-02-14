@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
+use std::io;
 use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::thread;
@@ -167,7 +168,13 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
         }
 
         f(entries);
-        poll.poll(&mut events, None).context("failed to poll")?;
+        loop {
+            match poll.poll(&mut events, None) {
+                Ok(()) => break,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(Error::new(e).context("failed to poll")),
+            }
+        }
     }
 }
 
