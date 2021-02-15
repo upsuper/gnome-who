@@ -1,4 +1,0 @@
-[submodule "mio-pidfd"]
-	path = mio-pidfd
-	url = git@github.com:upsuper-forks/mio-pidfd.git
-	branch = mio-07
