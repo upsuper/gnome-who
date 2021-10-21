@@ -17,7 +17,7 @@ libappindicator = "0.5.2"
 libc = "0.2.86"
 mio = { version = "0.7.7", features = ["os-poll"] }
 mio-pidfd = "0.2.0"
-nix = "0.19.1"
+nix = "0.23"
 once_cell = "1.3.1"
 tempfile = "3.1.0"
 utmp-rs = "0.1.1"

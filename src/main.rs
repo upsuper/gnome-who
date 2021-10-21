@@ -125,8 +125,8 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
                     let pid = Pid::from_raw(pid);
                     let can_kill = match signal::kill(pid, None) {
                         // Skip processes no longer exist.
-                        Err(nix::Error::Sys(Errno::ESRCH)) => return None,
-                        Err(nix::Error::Sys(Errno::EPERM)) => false,
+                        Err(Errno::ESRCH) => return None,
+                        Err(Errno::EPERM) => false,
                         _ => true,
                     };
                     let time = time.with_timezone(&chrono::Local);
