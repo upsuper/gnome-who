@@ -1,8 +1,9 @@
 use anyhow::{Context, Error, Result};
 use glib::MainContext;
+use gtk::prelude::*;
 use gtk::{
-    ButtonsType, CheckMenuItem, CheckMenuItemExt, DialogExt, DialogFlags, GtkMenuItemExt, Menu,
-    MenuItem, MenuShellExt, MessageDialog, MessageType, SeparatorMenuItem, WidgetExt, Window,
+    ButtonsType, CheckMenuItem, DialogFlags, Menu, MenuItem, MessageDialog, MessageType,
+    SeparatorMenuItem, Window,
 };
 use inotify::{Inotify, WatchMask};
 use libappindicator::{AppIndicator, AppIndicatorStatus};
