@@ -136,7 +136,7 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
                     if !host.is_empty() {
                         write!(&mut label, " @ {}", host).unwrap();
                     }
-                    let is_current = &line == &*DISPLAY;
+                    let is_current = line == *DISPLAY;
                     Some(Entry {
                         pid,
                         label,
@@ -150,7 +150,7 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
             .collect::<Vec<_>>();
 
         let registry = poll.registry();
-        let mut old_pid_map = mem::replace(&mut pid_map, HashMap::new());
+        let mut old_pid_map = mem::take(&mut pid_map);
         for Entry { pid, .. } in entries.iter() {
             if let Some((pid, fd)) = old_pid_map.remove_entry(pid) {
                 pid_map.insert(pid, fd);
