@@ -107,6 +107,7 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
     )?;
 
     let mut events = Events::with_capacity(1024);
+    let mut inotify_buffer = [0u8; 4096];
     let mut pid_map = HashMap::new();
     loop {
         // Generate all valid entries from utmp.
@@ -174,6 +175,18 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
                 Ok(()) => break,
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
                 Err(e) => return Err(Error::new(e).context("failed to poll")),
+            }
+        }
+
+        if events.iter().any(|e| e.token() == Token(0)) {
+            // Drain the inotify events if it's pending.
+            loop {
+                let iter = inotify
+                    .read_events(&mut inotify_buffer)
+                    .context("failed to read inotify events")?;
+                if iter.count() == 0 {
+                    break;
+                }
             }
         }
     }
