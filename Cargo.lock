@@ -421,10 +421,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8069d3ec154eb856955c1c0fbffefbf5f3c40a104ec912d4797314c1801abff"
 dependencies = [
  "bitflags",
- "futures-core",
  "inotify-sys",
  "libc",
- "tokio",
 ]
 
 [[package]]
@@ -494,9 +492,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.7.14"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8067b404fe97c70829f082dec8bcf4f71225d7eaea1d8645349cb76fa06205cc"
+checksum = "ba272f85fa0b41fc91872be579b3bbe0f56b792aa361a380eb669469f68dafb2"
 dependencies = [
  "libc",
  "log",
@@ -507,9 +505,9 @@ dependencies = [
 
 [[package]]
 name = "mio-pidfd"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecabc5a8dfcdc2edd328dc4ffecb47c70986ccf9fb4b34056678c8dfe6cf2082"
+checksum = "098a0cc8167b28187be58802d1a6491b9c8d4dad9da3ffca1ca06cd1fda4a7db"
 dependencies = [
  "libc",
  "mio",
@@ -885,19 +883,6 @@ checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
 dependencies = [
  "libc",
  "wasi",
- "winapi",
-]
-
-[[package]]
-name = "tokio"
-version = "1.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70e992e41e0d2fb9f755b37446f20900f64446ef54874f40a60c78f021ac6144"
-dependencies = [
- "autocfg",
- "libc",
- "mio",
- "pin-project-lite",
  "winapi",
 ]
 
