@@ -23,6 +23,9 @@ use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::thread;
 use tempfile::TempDir;
+use time::format_description::FormatItem;
+use time::macros::format_description;
+use time::UtcOffset;
 use utmp_rs::UtmpEntry;
 
 const UTMP_PATH: &str = "/var/run/utmp";
@@ -93,6 +96,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+const LOCAL_TIME_FORMAT: &[FormatItem<'_>] =
+    format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
+const GENERAL_TIME_FORMAT: &[FormatItem<'_>] = format_description!(
+    "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour \
+         sign:mandatory]:[offset_minute]:[offset_second]"
+);
+
 fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
     let mut poll = Poll::new().context("failed to create poll")?;
 
@@ -131,9 +141,12 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
                         Err(Errno::EPERM) => false,
                         _ => true,
                     };
-                    let time = time.with_timezone(&chrono::Local);
-                    let mut label =
-                        format!("{} - {} / {}", time.format("%Y-%m-%d %H:%M:%S"), user, line);
+                    let offset = UtcOffset::local_offset_at(time).ok();
+                    let time = match offset {
+                        Some(offset) => time.to_offset(offset).format(LOCAL_TIME_FORMAT).unwrap(),
+                        None => time.format(GENERAL_TIME_FORMAT).unwrap(),
+                    };
+                    let mut label = format!("{} - {} / {}", time, user, line);
                     if !host.is_empty() {
                         write!(&mut label, " @ {}", host).unwrap();
                     }
