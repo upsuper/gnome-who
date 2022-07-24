@@ -10,10 +10,10 @@ exclude = ["screenshot.png"]
 [dependencies]
 anyhow = "1.0.26"
 chrono = "0.4.19"
-glib = "0.14"
-gtk = "0.14"
+glib = "0.15"
+gtk = "0.15"
 inotify = { version = "0.9", default-features = false }
-libappindicator = "0.6"
+libappindicator = "0.7"
 libc = "0.2.86"
 mio = { version = "0.8", features = ["os-poll"] }
 mio-pidfd = "0.3.0"
