@@ -33,6 +33,8 @@ const UTMP_PATH: &str = "/var/run/utmp";
 const NORMAL_ICON: &[u8] = include_bytes!("../icons/normal.svg");
 const WARNING_ICON: &[u8] = include_bytes!("../icons/warning.svg");
 
+const IGNORED_HOSTS: &[&str] = &["login screen"];
+
 static DISPLAY: Lazy<String> = Lazy::new(|| env::var("DISPLAY").expect("no DISPLAY specified"));
 
 enum Message {
@@ -44,6 +46,7 @@ struct Entry {
     pid: Pid,
     label: String,
     is_current: bool,
+    should_ignore: bool,
     can_kill: bool,
 }
 
@@ -153,10 +156,12 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
                         write!(&mut label, " @ {}", host).unwrap();
                     }
                     let is_current = line == *DISPLAY;
+                    let should_ignore = IGNORED_HOSTS.iter().any(|s| host == *s);
                     Some(Entry {
                         pid,
                         label,
                         is_current,
+                        should_ignore,
                         can_kill,
                     })
                 } else {
@@ -219,6 +224,7 @@ fn update_indicator(indicator: &mut AppIndicator, entries: Vec<Entry>) {
         pid,
         label,
         is_current,
+        should_ignore,
         can_kill,
     } in entries.into_iter()
     {
@@ -235,7 +241,9 @@ fn update_indicator(indicator: &mut AppIndicator, entries: Vec<Entry>) {
                 let _ = signal::kill(pid, Signal::SIGKILL);
             });
             menu.append(&item);
-            has_non_current = true;
+            if !should_ignore {
+                has_non_current = true;
+            }
         }
     }
     menu.append(&SeparatorMenuItem::new());
