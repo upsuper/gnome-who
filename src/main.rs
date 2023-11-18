@@ -1,5 +1,5 @@
 use anyhow::{Context, Error, Result};
-use glib::MainContext;
+use glib::{ControlFlow, MainContext, Priority};
 use gtk::prelude::*;
 use gtk::{
     ButtonsType, CheckMenuItem, DialogFlags, Menu, MenuItem, MessageDialog, MessageType,
@@ -50,7 +50,7 @@ struct Entry {
 fn main() -> Result<()> {
     gtk::init().context("failed to init GTK")?;
 
-    let (tx, rx) = MainContext::channel(glib::PRIORITY_HIGH);
+    let (tx, rx) = MainContext::channel(Priority::HIGH);
     thread::spawn(move || {
         let result = watch_entries(|entries| {
             let _ = tx.send(Message::Update(entries));
@@ -76,7 +76,7 @@ fn main() -> Result<()> {
     rx.attach(None, move |msg| match msg {
         Message::Update(entries) => {
             update_indicator(&mut indicator, entries);
-            glib::Continue(true)
+            ControlFlow::Continue
         }
         Message::Error(e) => {
             let message = format!("{:?}", e);
@@ -89,7 +89,7 @@ fn main() -> Result<()> {
             );
             dialog.connect_response(|_, _| gtk::main_quit());
             dialog.show_all();
-            glib::Continue(false)
+            ControlFlow::Break
         }
     });
 
