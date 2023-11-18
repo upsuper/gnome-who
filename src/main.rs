@@ -19,6 +19,7 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
+use std::io::ErrorKind;
 use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::thread;
@@ -108,7 +109,8 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
 
     let mut inotify = Inotify::init().context("failed to init inotify")?;
     inotify
-        .add_watch(UTMP_PATH, WatchMask::CLOSE_WRITE)
+        .watches()
+        .add(UTMP_PATH, WatchMask::CLOSE_WRITE)
         .context("failed to watch utmp file")?;
     poll.registry().register(
         &mut SourceFd(&inotify.as_raw_fd()),
@@ -194,10 +196,15 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
         if events.iter().any(|e| e.token() == Token(0)) {
             // Drain the inotify events if it's pending.
             loop {
-                let iter = inotify
+                let events = inotify
                     .read_events(&mut inotify_buffer)
+                    .map(|iter| iter.count())
+                    .or_else(|err| match err.kind() {
+                        ErrorKind::WouldBlock => Ok(0),
+                        _ => Err(err),
+                    })
                     .context("failed to read inotify events")?;
-                if iter.count() == 0 {
+                if events == 0 {
                     break;
                 }
             }

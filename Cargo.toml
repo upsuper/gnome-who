@@ -11,7 +11,7 @@ exclude = ["screenshot.png"]
 anyhow = "1.0.26"
 glib = "0.15"
 gtk = "0.15"
-inotify = { version = "0.9", default-features = false }
+inotify = { version = "0.10", default-features = false }
 libappindicator = "0.7"
 libc = "0.2.86"
 mio = { version = "0.8", features = ["os-poll"] }
