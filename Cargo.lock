@@ -342,6 +342,8 @@ name = "gnome-who"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures-channel",
+ "futures-util",
  "glib",
  "gtk",
  "inotify",

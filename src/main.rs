@@ -1,5 +1,7 @@
 use anyhow::{Context, Error, Result};
-use glib::{ControlFlow, MainContext, Priority};
+use futures_channel::mpsc::UnboundedReceiver;
+use futures_util::StreamExt;
+use glib::MainContext;
 use gtk::prelude::*;
 use gtk::{
     ButtonsType, CheckMenuItem, DialogFlags, Menu, MenuItem, MessageDialog, MessageType,
@@ -53,16 +55,16 @@ struct Entry {
 fn main() -> Result<()> {
     gtk::init().context("failed to init GTK")?;
 
-    let (tx, rx) = MainContext::channel(Priority::HIGH);
+    let (tx, rx) = futures_channel::mpsc::unbounded();
     thread::spawn(move || {
         let result = watch_entries(|entries| {
-            let _ = tx.send(Message::Update(entries));
+            let _ = tx.unbounded_send(Message::Update(entries));
         });
         match result {
             Ok(()) => unreachable!(),
             Err(e) => {
                 // Ignore if sending failed, because the receiver may have died.
-                let _ = tx.send(Message::Error(e));
+                let _ = tx.unbounded_send(Message::Error(e));
             }
         };
     });
@@ -76,25 +78,7 @@ fn main() -> Result<()> {
     indicator.set_icon_theme_path(temp_path.to_str().unwrap());
     indicator.set_status(AppIndicatorStatus::Active);
 
-    rx.attach(None, move |msg| match msg {
-        Message::Update(entries) => {
-            update_indicator(&mut indicator, entries);
-            ControlFlow::Continue
-        }
-        Message::Error(e) => {
-            let message = format!("{:?}", e);
-            let dialog = MessageDialog::new::<Window>(
-                None,
-                DialogFlags::MODAL,
-                MessageType::Error,
-                ButtonsType::Ok,
-                &message,
-            );
-            dialog.connect_response(|_, _| gtk::main_quit());
-            dialog.show_all();
-            ControlFlow::Break
-        }
-    });
+    MainContext::default().spawn_local(handle_messages(indicator, rx));
 
     gtk::main();
     Ok(())
@@ -212,6 +196,29 @@ fn watch_entries(f: impl Fn(Vec<Entry>)) -> Result<()> {
                 if events == 0 {
                     break;
                 }
+            }
+        }
+    }
+}
+
+async fn handle_messages(mut indicator: AppIndicator, mut rx: UnboundedReceiver<Message>) {
+    while let Some(msg) = rx.next().await {
+        match msg {
+            Message::Update(entries) => {
+                update_indicator(&mut indicator, entries);
+            }
+            Message::Error(e) => {
+                let message = format!("{:?}", e);
+                let dialog = MessageDialog::new::<Window>(
+                    None,
+                    DialogFlags::MODAL,
+                    MessageType::Error,
+                    ButtonsType::Ok,
+                    &message,
+                );
+                dialog.connect_response(|_, _| gtk::main_quit());
+                dialog.show_all();
+                break;
             }
         }
     }

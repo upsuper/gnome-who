@@ -9,6 +9,8 @@ exclude = ["screenshot.png"]
 
 [dependencies]
 anyhow = "1.0.26"
+futures-channel = "0.3"
+futures-util = "0.3"
 glib = "0.18"
 gtk = "0.18"
 inotify = { version = "0.10", default-features = false }
